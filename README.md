@@ -95,6 +95,10 @@ Use `GET /api/agent/audit?agentId=abc-123` to inspect every accepted and rejecte
 
 A `Dockerfile` is included for container deployment.
 
+### Vercel
+
+Vercel's deployed filesystem is read-only. When the `VERCEL=1` environment variable is present and `DATABASE_URL` is not set, the app automatically uses `sqlite:////tmp/autonomous_ai_creator.db`. You do not need to add a database variable for that fallback. To override it, set `DATABASE_URL` to a writable database URL; an absolute Linux SQLite path must use four slashes, for example `sqlite:////tmp/my_agent.db`.
+
 ## Hackathon Submission Checklist
 
 - [x] Public Git repository

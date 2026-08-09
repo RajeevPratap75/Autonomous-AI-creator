@@ -1,4 +1,5 @@
 from collections.abc import Generator
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
@@ -12,6 +13,9 @@ class Base(DeclarativeBase):
 
 
 def _ensure_data_dir() -> None:
+    # Vercel provides /tmp already; its deployed project filesystem is read-only.
+    if os.getenv("VERCEL") == "1":
+        return
     if settings.database_url.startswith("sqlite"):
         db_path = settings.database_url.replace("sqlite:///", "")
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)

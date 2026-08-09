@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Configure a disposable database before application modules are imported.
 _db_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -11,6 +12,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{Path(_db_file.name).as_posix()}"
 os.environ["IMMEDIATE_CYCLE_ON_INIT"] = "false"
 
 from app.database.session import SessionLocal, init_db  # noqa: E402
+from app.config import default_database_url  # noqa: E402
 from app.discovery.base import DiscoveredTopic  # noqa: E402
 from app.services.agent_service import AgentService  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -71,6 +73,10 @@ class WorkflowTests(unittest.TestCase):
             feed = client.get("/api/agent/feed", params={"agentId": agent_id})
             self.assertEqual(feed.status_code, 200)
             self.assertIn("posts", feed.json())
+
+    def test_vercel_fallback_database_url(self):
+        with patch.dict(os.environ, {"VERCEL": "1"}):
+            self.assertEqual(default_database_url(), "sqlite:////tmp/autonomous_ai_creator.db")
 
 
 if __name__ == "__main__":
