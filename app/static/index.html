@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Persona Feed</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0c1220; --panel: #151e31; --muted: #9eacc5; --text: #f4f7ff; --accent: #7c9cff; --line: #2a3955; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: radial-gradient(circle at 10% 0%, #1d315c 0, transparent 32rem), var(--bg); color: var(--text); font: 16px/1.55 Inter, ui-sans-serif, system-ui, sans-serif; }
+      main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 64px 0; }
+      header { display: flex; justify-content: space-between; gap: 24px; align-items: start; margin-bottom: 36px; }
+      h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.5rem); letter-spacing: -.055em; }
+      h2 { font-size: 1rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+      .eyebrow { color: #b9c8ff; font-size: .8rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 8px; }
+      .subhead { color: var(--muted); max-width: 46ch; margin: 12px 0 0; }
+      .panel, article { background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 16px; }
+      .panel { padding: 20px; margin-bottom: 30px; }
+      form { display: grid; grid-template-columns: 1fr 1.4fr .7fr auto; gap: 10px; }
+      input, button { border-radius: 9px; font: inherit; padding: 10px 12px; }
+      input { min-width: 0; color: var(--text); background: #0e1728; border: 1px solid var(--line); }
+      button { color: #091124; background: #b9c8ff; border: 0; font-weight: 700; cursor: pointer; }
+      button.secondary { color: var(--text); background: transparent; border: 1px solid var(--line); }
+      button:hover { filter: brightness(1.08); }
+      #status { color: var(--muted); font-size: .9rem; margin: 12px 0 0; min-height: 1.4em; }
+      #feed { display: grid; gap: 16px; }
+      article { padding: 24px; }
+      .meta { color: var(--muted); font-size: .85rem; margin-bottom: 16px; }
+      .post-text { white-space: pre-wrap; margin: 0; }
+      .markdown { white-space: normal; }
+      .markdown h1, .markdown h2, .markdown h3 { margin: 0 0 12px; color: var(--text); letter-spacing: -.02em; text-transform: none; }
+      .markdown h1 { font-size: 1.45rem; }
+      .markdown h2 { font-size: 1.2rem; }
+      .markdown h3 { font-size: 1.05rem; }
+      .markdown p { margin: 0 0 14px; }
+      .markdown code { padding: 2px 5px; background: #0e1728; border-radius: 4px; }
+      details { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); }
+      summary { cursor: pointer; color: #cbd7f7; font-weight: 600; }
+      .sources { margin: 10px 0 0; padding-left: 20px; }
+      a { color: #aebfff; }
+      .empty { color: var(--muted); text-align: center; padding: 48px 12px; border: 1px dashed var(--line); border-radius: 16px; }
+      @media (max-width: 650px) { main { padding-top: 36px; } header { display: block; } header button { margin-top: 18px; } form { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Autonomous AI Persona</p>
+          <h1>Start an autonomous persona.</h1>
+          <p class="subhead">Choose any topic and a schedule. The backend searches live sources, filters results, and stores every published post in your feed.</p>
+        </div>
+        <button id="refresh" class="secondary" type="button">Refresh feed</button>
+      </header>
+
+      <section class="panel" aria-labelledby="persona-heading">
+        <h2 id="persona-heading">Topic and schedule</h2>
+        <form id="persona-form">
+          <input id="name" required maxlength="100" placeholder="Persona name (e.g. Ada)" />
+          <input id="domain" required maxlength="200" placeholder="Any topic (e.g. cricket, climate policy)" />
+          <input id="cadence" required type="number" min="5" max="10080" value="180" aria-label="Posting interval in minutes" title="Minutes between searches" />
+          <button type="submit">Initialize agent</button>
+        </form>
+        <p id="status" role="status">Fill in the form and select Initialize agent.</p>
+      </section>
+
+      <section aria-labelledby="feed-heading">
+        <h2 id="feed-heading">Latest posts</h2>
+        <div id="feed"><div class="empty">Your published posts will appear here.</div></div>
+      </section>
+    </main>
+    <script>
+      const form = document.querySelector('#persona-form');
+      const feed = document.querySelector('#feed');
+      const status = document.querySelector('#status');
+      const refresh = document.querySelector('#refresh');
+      let agentId = localStorage.getItem('persona-agent-id');
+
+      const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+      const dateLabel = (value) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+      const markdown = value => esc(value)
+        .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+
+      function render(posts) {
+        if (!posts.length) { feed.innerHTML = '<div class="empty">No posts yet. The agent is still evaluating topics.</div>'; return; }
+        feed.innerHTML = posts.map(post => {
+          const sources = (post.sources || []).map(source => {
+            const url = source.url || source.link;
+            const title = source.title || source.name || url || 'Source';
+            return url ? `<li><a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(title)}</a></li>` : `<li>${esc(title)}</li>`;
+          }).join('');
+          return `<article><div class="meta">Published ${esc(dateLabel(post.createdAt))}</div><div class="post-text markdown"><p>${markdown(post.text)}</p></div><details><summary>Editorial rationale</summary><p>${esc(post.rationale)}</p>${sources ? `<ul class="sources">${sources}</ul>` : ''}</details></article>`;
+        }).join('');
+      }
+
+      async function loadFeed() {
+        if (!agentId) {
+          render([]);
+          status.textContent = 'Fill in the form and select Initialize agent.';
+          return;
+        }
+        status.textContent = 'Loading feed…';
+        try {
+          const response = await fetch(`/api/agent/feed?agentId=${encodeURIComponent(agentId)}`);
+          if (!response.ok) throw new Error(response.status === 404 ? 'This saved feed no longer exists.' : 'Unable to load the feed.');
+          const data = await response.json();
+          const posts = data.posts;
+          render(posts);
+          status.textContent = `${posts.length} post${posts.length === 1 ? '' : 's'} in this feed.`;
+        } catch (error) {
+          render([]);
+          status.textContent = error.message;
+        }
+      }
+
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = document.querySelector('#name').value.trim();
+        const domain = document.querySelector('#domain').value.trim();
+        const cadenceMinutes = Number(document.querySelector('#cadence').value);
+        status.textContent = `Creating persona. It will search for “${domain}” every ${cadenceMinutes} minutes…`;
+        form.querySelector('button').disabled = true;
+        try {
+          const response = await fetch('/api/agent/init', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: { name, domain, cadenceMinutes } }) });
+          if (!response.ok) throw new Error('Could not create this persona.');
+          agentId = (await response.json()).agentId;
+          localStorage.setItem('persona-agent-id', agentId);
+          await loadFeed();
+        } catch (error) { status.textContent = error.message; }
+        finally { form.querySelector('button').disabled = false; }
+      });
+      refresh.addEventListener('click', loadFeed);
+      loadFeed();
+    </script>
+  </body>
+</html>

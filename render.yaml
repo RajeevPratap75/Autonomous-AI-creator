@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: autonomous-ai-persona
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SCHEDULER_INTERVAL_MINUTES
+        value: 30
+      - key: DATABASE_URL
+        value: sqlite:///./data/agent.db
